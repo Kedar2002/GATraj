@@ -7,7 +7,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from laplace_decoder import *
-from fractions import gcd
 
 
 def initialize_weights(modules):

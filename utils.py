@@ -18,14 +18,16 @@ class DataLoader_bytrajec2():
         self.num_tra = 0
         if self.args.dataset=='eth5':
 
+            # Keep the five benchmark datasets in the README/paper order.
+            # The remaining folders are alternate scene fragments and are not
+            # part of the standard ETH/UCY leave-one-dataset-out evaluation.
             self.data_dirs = ['./data/eth/univ', './data/eth/hotel',
                               './data/ucy/zara/zara01', './data/ucy/zara/zara02',
-                              './data/ucy/univ/students001','data/ucy/univ/students003',
-                              './data/ucy/univ/uni_examples','./data/ucy/zara/zara03']
+                              './data/ucy/univ/students001']
 
             # Data directory where the pre-processed pickle file resides
             self.data_dir = './data'
-            skip=[6,10,10,10,10,10,10,10]
+            skip=[6,10,10,10,10]
 
             if args.ifvalid:
                 self.val_fraction = args.val_fraction
@@ -33,10 +35,9 @@ class DataLoader_bytrajec2():
                 self.val_fraction=0
 
             train_set=[i for i in range(len(self.data_dirs))]
-            if args.test_set==4 or args.test_set==5:
-                self.test_set=[4,5]
-            else:
-                self.test_set=[self.args.test_set]
+            if not 0 <= args.test_set < len(self.data_dirs):
+                raise ValueError('test_set must be 0..4: ETH, Hotel, Zara1, Zara2, Uni')
+            self.test_set=[self.args.test_set]
 
             for x in self.test_set:
                 train_set.remove(x)
@@ -173,7 +174,7 @@ class DataLoader_bytrajec2():
 
         data_index=self.get_data_index(frameped_dict,setname)
         val_index=data_index[:,:int(data_index.shape[1]*val_fraction)]
-        train_index = data_index[:,(int(data_index.shape[1] * val_fraction)+1):]
+        train_index = data_index[:,int(data_index.shape[1] * val_fraction):]
 
         trainbatch=self.get_seq_from_index_balance(frameped_dict,pedtraject_dict,train_index,setname)
         valbatch = self.get_seq_from_index_balance(frameped_dict,pedtraject_dict,val_index,setname)
