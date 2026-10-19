@@ -49,6 +49,9 @@ class Processor():
     def save_model(self,epoch):
         model_path= self.args.save_dir + '/' + self.args.train_model + '/' + self.args.train_model + '_' +\
                                    str(epoch) + '.tar'
+        # Write to a temporary file first so an interrupted save cannot leave
+        # a truncated checkpoint at the epoch's final path.
+        temporary_path = model_path + '.tmp'
         torch.save({
             'epoch': epoch,
             'state_dict': self.net.state_dict(),
@@ -67,7 +70,8 @@ class Processor():
                 'torch': torch.get_rng_state(),
                 'cuda': torch.cuda.get_rng_state_all() if torch.cuda.is_available() else [],
             },
-        }, model_path,_use_new_zipfile_serialization=False)
+        }, temporary_path)
+        os.replace(temporary_path, model_path)
 
 
     def load_model(self):
@@ -77,7 +81,13 @@ class Processor():
             if not os.path.isfile(self.args.model_save_path):
                 raise FileNotFoundError('Requested checkpoint does not exist: {}'.format(self.args.model_save_path))
             print('Loading checkpoint')
-            checkpoint = torch.load(self.args.model_save_path, map_location='cpu')
+            # Checkpoints contain optimizer, RNG and scheduler state in
+            # addition to tensors, so trusted training files need full loading.
+            checkpoint = torch.load(
+                self.args.model_save_path,
+                map_location='cpu',
+                weights_only=False,
+            )
             model_epoch = int(checkpoint['epoch'])
             self.epoch = model_epoch + 1
             self.net.load_state_dict(checkpoint['state_dict'])

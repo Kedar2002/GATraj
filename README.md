@@ -53,7 +53,9 @@ a meaningful reproduction). Colab/Kaggle sessions can disconnect. To train in
 keep `--num_epochs 1000` fixed and set `--epochs_per_run 100`. Resume each
 session with `--load_model <last completed epoch>` (use `0` for the first
 session). Checkpoints include model, optimizer, scheduler and random-number
-generator states. For example, in a Colab notebook cell, run:
+generator states. New checkpoints use PyTorch's default ZIP format and are
+written atomically so an interrupted save does not replace the last complete
+checkpoint. For example, in a Colab notebook cell, run:
 
 ```python
 from pathlib import Path
@@ -102,7 +104,9 @@ training arguments. To test a checkpoint, add `--phase test --load_model
 <epoch>`. Run IDs 0 through 4 for the five folds. Checkpoints made before
 scheduler state was saved can be loaded, but their exact learning-rate history
 cannot be reconstructed; for a strict reproducible comparison, start a fresh
-run with this version.
+run with this version. Checkpoints created by older code with PyTorch's legacy
+serialization format may not load in recent PyTorch releases; this update only
+changes checkpoints saved from now on.
 
 ### Dataset sources
 
