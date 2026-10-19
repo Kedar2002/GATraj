@@ -48,10 +48,61 @@ python train.py --test_set 0 --num_epochs 1000 --x_encoder_layers 3 \
 ```
 
 For a quick smoke run, set `--num_epochs 1` (this is only a runtime check, not
-a meaningful reproduction). Colab/Kaggle sessions can disconnect, so save or
-copy `savedata/` to persistent Drive/Kaggle output periodically. Resume with
-`--load_model <epoch>`; test a saved checkpoint by adding
-`--phase test --load_model <epoch>`. Run IDs 0 through 4 for the five folds.
+a meaningful reproduction). Colab/Kaggle sessions can disconnect. To train in
+100-epoch sessions while keeping one 1,000-epoch cosine learning-rate schedule,
+keep `--num_epochs 1000` fixed and set `--epochs_per_run 100`. Resume each
+session with `--load_model <last completed epoch>` (use `0` for the first
+session). Checkpoints include model, optimizer, scheduler and random-number
+generator states. For example, in a Colab notebook cell, run:
+
+```python
+from pathlib import Path
+import subprocess
+
+epochs = range(100, 1001, 100)
+for end_epoch in epochs:
+    previous_epoch = end_epoch - 100
+    command = [
+        "python", "train.py",
+        "--test_set", "1",
+        "--num_epochs", "1000",
+        "--epochs_per_run", "100",
+        "--x_encoder_layers", "3",
+        "--eta_min", "1e-5",
+        "--batch_size", "32",
+        "--learning_rate", "5e-4",
+        "--randomRotate", "True",
+        "--final_mode", "20",
+        "--neighbor_thred", "10",
+        "--using_cuda", "True",
+        "--gpu", "0",
+        "--clip", "1",
+        "--pass_time", "2",
+        "--ifGaussian", "False",
+        "--SR", "True",
+        "--input_offset", "True",
+        "--seed", "1",
+        "--load_model", str(previous_epoch),
+    ]
+    subprocess.run(command, check=True)
+
+    # Mount Google Drive first; this preserves the checkpoints if Colab resets.
+    source = Path("savedata/1/GATraj")
+    destination = Path("/content/drive/MyDrive/GATraj/savedata/1/GATraj")
+    destination.mkdir(parents=True, exist_ok=True)
+    for checkpoint in source.glob("GATraj_*.tar"):
+        target = destination / checkpoint.name
+        if not target.exists() or checkpoint.stat().st_mtime > target.stat().st_mtime:
+            target.write_bytes(checkpoint.read_bytes())
+```
+
+If a session stops unexpectedly, restore `savedata/1/GATraj/GATraj_<epoch>.tar`
+from Drive and resume with `--load_model <epoch>`; retain the same seed and
+training arguments. To test a checkpoint, add `--phase test --load_model
+<epoch>`. Run IDs 0 through 4 for the five folds. Checkpoints made before
+scheduler state was saved can be loaded, but their exact learning-rate history
+cannot be reconstructed; for a strict reproducible comparison, start a fresh
+run with this version.
 
 ### Dataset sources
 

@@ -80,6 +80,12 @@ def get_parser():
         '--load_model', default=0,type=int,
         help="load model weights from this index before training or testing")
     parser.add_argument(
+        '--epochs_per_run', default=0, type=int,
+        help='Optional number of epochs to run before stopping; num_epochs remains the full schedule length')
+    parser.add_argument(
+        '--seed', default=1, type=int,
+        help='Random seed for training and deterministic data ordering')
+    parser.add_argument(
         '--model', default='models.GATraj')
     ######################################
     parser.add_argument(
@@ -148,15 +154,19 @@ def save_arg(args):
     with open(args.config, 'w') as f:
         yaml.dump(arg_dict, f)
 def prepare_seed(rand_seed):
+	# Seed every RNG used by training and data preprocessing.
 	np.random.seed(rand_seed)
 	random.seed(rand_seed)
 	torch.manual_seed(rand_seed)
 	torch.cuda.manual_seed_all(rand_seed)
+	if hasattr(torch.backends, 'cudnn'):
+		torch.backends.cudnn.deterministic = True
+		torch.backends.cudnn.benchmark = False
 	
 if __name__ == '__main__':
     parser = get_parser()
     p = parser.parse_args()
-    prepare_seed(1)
+    prepare_seed(p.seed)
     p.save_dir=p.save_base_dir+str(p.test_set)+'/' # ./savedata/1'
     p.model_dir=p.save_base_dir+str(p.test_set)+'/'+p.train_model+'/' # ./savedata/1/GATraj/'
     p.config=p.model_dir+'/config_'+p.phase+'.yaml' # ./savedata/1/GATraj/config_train.ymal'

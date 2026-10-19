@@ -25,13 +25,20 @@ class Processor():
         self.step_ratio = self.args.step_ratio
         self.lr_step=self.args.lr_step
         self.set_optimizer()
-        self.epoch = 0
+        self.epoch = 1
         self.load_model()
         # self.save_model(self.epoch)
         if self.args.using_cuda:
             self.net=self.net.cuda()
         else:
             self.net=self.net.cpu()
+        # Checkpoints load on CPU for portability. Move Adam moments to the
+        # model device before the next optimizer step.
+        model_device = next(self.net.parameters()).device
+        for state in self.optimizer.state.values():
+            for key, value in state.items():
+                if torch.is_tensor(value):
+                    state[key] = value.to(model_device)
         self.net_file = open(os.path.join(self.args.model_dir, 'net.txt'), 'a+')
         self.net_file.write(str(self.net))
         self.net_file.close()
@@ -45,7 +52,21 @@ class Processor():
         torch.save({
             'epoch': epoch,
             'state_dict': self.net.state_dict(),
-            'optimizer_state_dict': self.optimizer.state_dict()
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'scheduler_state_dict': self.scheduler.state_dict(),
+            'seed': getattr(self.args, 'seed', 1),
+            'rng_state': {
+                'python': random.getstate(),
+                'numpy': (
+                    np.random.get_state()[0],
+                    torch.from_numpy(np.random.get_state()[1].copy()),
+                    int(np.random.get_state()[2]),
+                    int(np.random.get_state()[3]),
+                    float(np.random.get_state()[4]),
+                ),
+                'torch': torch.get_rng_state(),
+                'cuda': torch.cuda.get_rng_state_all() if torch.cuda.is_available() else [],
+            },
         }, model_path,_use_new_zipfile_serialization=False)
 
 
@@ -53,16 +74,42 @@ class Processor():
         if self.args.load_model > 0:
             self.args.model_save_path = self.args.save_dir + '/' + self.args.train_model + '/' + self.args.train_model + '_' + \
                                         str(self.args.load_model) + '.tar'
-            if os.path.isfile(self.args.model_save_path):
-                print('Loading checkpoint')
-                checkpoint = torch.load(self.args.model_save_path,map_location={'cuda:0': 'cuda:'+str(self.args.gpu)})
-                # print("self.args.model_save_path",self.args.model_save_path)
-                model_epoch = checkpoint['epoch']
-                self.epoch = int(model_epoch) + 1
-                self.net.load_state_dict(checkpoint['state_dict'])
-                print('Loaded checkpoint at epoch', model_epoch)
-                for i in range(self.args.load_model):
-                    self.scheduler.step()
+            if not os.path.isfile(self.args.model_save_path):
+                raise FileNotFoundError('Requested checkpoint does not exist: {}'.format(self.args.model_save_path))
+            print('Loading checkpoint')
+            checkpoint = torch.load(self.args.model_save_path, map_location='cpu')
+            model_epoch = int(checkpoint['epoch'])
+            self.epoch = model_epoch + 1
+            self.net.load_state_dict(checkpoint['state_dict'])
+            if 'optimizer_state_dict' in checkpoint:
+                self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            if 'scheduler_state_dict' in checkpoint:
+                self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+            else:
+                # Legacy checkpoints contain the optimizer's saved learning
+                # rate but no scheduler state. Restore the scheduler position
+                # and preserve that rate for the next scheduler step.
+                legacy_state = self.scheduler.state_dict()
+                legacy_state['last_epoch'] = model_epoch + 1
+                legacy_state['_step_count'] = model_epoch + 2
+                legacy_state['_last_lr'] = [group['lr'] for group in self.optimizer.param_groups]
+                self.scheduler.load_state_dict(legacy_state)
+                print('Checkpoint lacks scheduler state; continuing from its saved learning rate.')
+            if 'rng_state' in checkpoint:
+                rng_state = checkpoint['rng_state']
+                random.setstate(rng_state['python'])
+                numpy_state = rng_state['numpy']
+                np.random.set_state((
+                    numpy_state[0],
+                    numpy_state[1].cpu().numpy().astype(np.uint32, copy=False),
+                    numpy_state[2],
+                    numpy_state[3],
+                    numpy_state[4],
+                ))
+                torch.set_rng_state(rng_state['torch'].cpu())
+                if torch.cuda.is_available() and rng_state['cuda']:
+                    torch.cuda.set_rng_state_all(rng_state['cuda'])
+            print('Loaded checkpoint at epoch', model_epoch)
 
 
     def set_optimizer(self):
@@ -79,7 +126,11 @@ class Processor():
     def playtrain(self):
         print('Training begin')
         test_error, test_final_error,first_erro_test,val_final_error,val_error,val_erro_first=0,0,0,0,0,0
-        for epoch in range(self.epoch, self.args.num_epochs+1):
+        run_end_epoch = self.args.num_epochs
+        epochs_per_run = getattr(self.args, 'epochs_per_run', 0)
+        if epochs_per_run > 0:
+            run_end_epoch = min(run_end_epoch, self.epoch + epochs_per_run - 1)
+        for epoch in range(self.epoch, run_end_epoch + 1):
             print('Epoch-{0} lr: {1}'.format(epoch, self.optimizer.param_groups[0]['lr']))
             train_loss = self.train_epoch(epoch)
             val_error, val_final_error, val_erro_first = self.val_epoch(epoch)

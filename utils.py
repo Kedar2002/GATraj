@@ -48,8 +48,9 @@ class DataLoader_bytrajec2():
 
         self.train_data_file = os.path.join(self.args.save_dir,"train_trajectories.cpkl")
         self.test_data_file = os.path.join(self.args.save_dir, "test_trajectories.cpkl")
-        self.train_batch_cache = os.path.join(self.args.save_dir,"train_batch_cache.cpkl")
-        self.test_batch_cache = os.path.join(self.args.save_dir, "test_batch_cache.cpkl")
+        seed = getattr(self.args, 'seed', 1)
+        self.train_batch_cache = os.path.join(self.args.save_dir, f"train_batch_cache_seed{seed}.cpkl")
+        self.test_batch_cache = os.path.join(self.args.save_dir, f"test_batch_cache_seed{seed}.cpkl")
 
         print("Creating pre-processed data from raw data.")
         self.traject_preprocess('train')
@@ -205,7 +206,9 @@ class DataLoader_bytrajec2():
         data_index = np.concatenate((np.array([frame_id_in_set], dtype=int), np.array([set_id], dtype=int),
                                  np.array([all_frame_id_list], dtype=int)), 0)
         if ifshuffle:
-            random.Random().shuffle(all_frame_id_list)
+            seed = getattr(self.args, 'seed', 1)
+            split_offset = 0 if setname == 'train' else 1
+            random.Random(seed + split_offset).shuffle(all_frame_id_list)
         data_index = data_index[:, all_frame_id_list]
 
         #to make full use of the data
