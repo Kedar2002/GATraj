@@ -10,6 +10,12 @@ pip install -r requirements.txt
 
 ### Google Colab / Kaggle
 
+Updated Colab notebooks: [Hotel (fold 1)](notebooks/GATraj_1.ipynb) and
+[Zara1 (fold 2)](notebooks/GATraj_2.ipynb). They check checkpoint saving/loading
+on CPU before training, keep the full 1,000-epoch schedule, resume from local
+Colab storage, and back up to Drive every 100 epochs. Their training outputs
+use `colab_savedata/` to avoid resuming the bundled pretrained checkpoints.
+
 The repository implements the **ETH/UCY pedestrian experiments**. It does not
 include the nuScenes data adapter/evaluator used for the vehicle experiments
 in the paper. The default data loader expects to be run from this directory
